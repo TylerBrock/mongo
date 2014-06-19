@@ -191,6 +191,10 @@ namespace mongo {
         return Status::OK();
     }
 
+    Status JParse::parse(BSONObjBuilder& builder) {
+        return isArray() ? array("UNUSED", builder, false) : object("UNUSED", builder, false);
+    }
+
     Status JParse::object(const StringData& fieldName, BSONObjBuilder& builder, bool subObject) {
         MONGO_JSON_DEBUG("fieldName: " << fieldName);
         if (!readToken(LBRACE)) {
@@ -645,23 +649,30 @@ namespace mongo {
         return Status::OK();
     }
 
-    Status JParse::array(const StringData& fieldName, BSONObjBuilder& builder) {
+    Status JParse::array(const StringData& fieldName, BSONObjBuilder& builder, bool subObject) {
         MONGO_JSON_DEBUG("fieldName: " << fieldName);
         uint32_t index(0);
         if (!readToken(LBRACKET)) {
             return parseError("Expecting '['");
         }
-        BSONObjBuilder subBuilder(builder.subarrayStart(fieldName));
+
+        BSONObjBuilder* arrayBuilder = &builder;
+        scoped_ptr<BSONObjBuilder> subObjBuilder;
+        if (subObject) {
+            subObjBuilder.reset(new BSONObjBuilder(builder.subarrayStart(fieldName)));
+            arrayBuilder = subObjBuilder.get();
+        }
+
         if (!peekToken(RBRACKET)) {
             do {
-                Status ret = value(builder.numStr(index), subBuilder);
+                Status ret = value(builder.numStr(index), *arrayBuilder);
                 if (ret != Status::OK()) {
                     return ret;
                 }
                 index++;
             } while (readToken(COMMA));
         }
-        subBuilder.done();
+        arrayBuilder->done();
         if (!readToken(RBRACKET)) {
             return parseError("Expecting ']' or ','");
         }
@@ -1190,6 +1201,10 @@ namespace mongo {
         return true;
     }
 
+    bool JParse::isArray() {
+        return peekToken(LBRACKET);
+    }
+
     BSONObj fromjson(const char* jsonString, int* len) {
         MONGO_JSON_DEBUG("jsonString: " << jsonString);
         if (jsonString[0] == '\0') {
@@ -1200,7 +1215,7 @@ namespace mongo {
         BSONObjBuilder builder;
         Status ret = Status::OK();
         try {
-            ret = jparse.object("UNUSED", builder, false);
+            ret = jparse.parse(builder);
         }
         catch(std::exception& e) {
             std::ostringstream message;
@@ -1219,6 +1234,19 @@ namespace mongo {
 
     BSONObj fromjson(const std::string& str) {
         return fromjson( str.c_str() );
+    }
+
+    std::string tojson(const BSONObj& obj, JsonStringFormat format, bool pretty) {
+        return obj.jsonString(format, pretty);
+    }
+
+    std::string tojson(const BSONArray& arr, JsonStringFormat format, bool pretty) {
+        return arr.jsonString(format, pretty, true);
+    }
+
+    bool isArray(const StringData& str) {
+        JParse parser(str.rawData());
+        return parser.isArray();
     }
 
 }  /* namespace mongo */
