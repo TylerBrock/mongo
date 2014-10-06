@@ -4,6 +4,7 @@ load('jstests/aggregation/extras/utils.js');
 
 db = db.getSiblingDB("aggdb");
 
+// Used to verify expected output format
 function testFormat(date, formatStr, expectedStr) {
     db.dates.drop();
     db.dates.insert({date: date});
@@ -21,6 +22,7 @@ function testFormat(date, formatStr, expectedStr) {
     assert.eq(res[0].formatted, expectedStr);
 }
 
+// Used to verify that server recognizes bad formats
 function testFormatError(formatObj, errCode) {
     db.dates.drop();
     db.dates.insert({tm: ISODate()});
@@ -30,6 +32,26 @@ function testFormatError(formatObj, errCode) {
         formatted: {
             $dateToString: formatObj
     }}}, errCode);
+}
+
+// Used to check date field references
+function testDateField(dateField) {
+  db.dates.drop();
+  db.dates.insert({date: new Date()});
+
+  return db.dates.aggregate({ $project:
+    { formatted: { $dateToString : { format: "%Y", date: dateField }} }
+  }).toArray()[0].formatted;
+}
+
+// Used to verify that only date values are accepted for date parameter
+function testDateValueError(dateVal, errCode) {
+  db.dates.drop();
+  db.dates.insert({date: dateVal});
+
+  assertErrorCode(db.dates, { $project:
+    { formatted: { $dateToString : { format: "%Y", date: "$date" }} }
+  }, errCode);
 }
 
 var now = ISODate();
@@ -104,3 +126,66 @@ testFormatError({format: "AAAAA%%%AAAAAA", date:"$date"}, 18536);
 
 // Format parameter not a string
 testFormatError({format: {iamalion: "roar"}, date:"$date"}, 18533);
+
+///
+/// Additional Tests
+///
+
+// Test document
+var date = new Date(1999, 8, 29);
+
+testFormat(date, "%%d", "%d");
+
+//A very long string of "%"s
+var longstr = Array(1000).join("%%");
+var halfstr = Array(1000).join("%");
+testFormat(date, longstr, halfstr);
+
+// Using subexpressions as format strings (eg "format: '$b'")
+testFormat(date, "$b", "$b");
+
+///
+/// Using non-date fields as date parameter *should fail*
+///
+
+// Array
+testDateValueError([], 16006);
+testDateValueError([1, 2, 3], 16006);
+
+// Sub-object
+testDateValueError({}, 16006);
+testDateValueError({a: 1}, 16006);
+
+// String
+testDateValueError("blahblahblah", 16006);
+
+// Integer
+testDateValueError(1234, 16006);
+
+///
+/// Using non-string fields as format strings
+///
+
+// Array
+testFormatError({format: [], date: "$date"}, 18533);
+testFormatError({format: [1, 2, 3], date: "$date"}, 18533);
+
+// Integer
+testFormatError({format: 1, date: "$date"}, 18533);
+
+// Date
+testFormatError({format: new Date(), date: "$date"}, 18533);
+
+///
+/// Other Edge Cases
+///
+
+// Dates as null (should return a null)
+testFormat(null, "%Y", null);
+
+// Dates as non-existent field
+assert.eq(testDateField("$notDate"), null);
+
+// Negative Years
+testDateValueError(new Date(-1, 1, 1), [16422, 18537]);
+testDateValueError(new Date(-1000, 1, 1), [16422, 18537]);

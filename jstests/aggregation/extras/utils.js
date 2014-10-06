@@ -248,7 +248,13 @@ function assertErrorCode(coll, pipe, code, errmsg) {
 
     /* assert failure with proper error code */
     assert(!res.ok, errmsg || "failed in assertErrorCode");
-    assert.eq(res.code, code);
+    if (code instanceof Array) {
+      print (code);
+        assert(code.indexOf(res.code));
+    }
+    else {
+        assert.eq(res.code, code);
+    }
 
     // Test with cursors
     var cmd = {pipeline: pipe};
@@ -266,6 +272,10 @@ function assertErrorCode(coll, pipe, code, errmsg) {
         }
     }
     else {
-        assert.eq(cursorRes.code, code);
+        if (code instanceof Array) {
+            assert(code.indexOf(cursorRes.code));
+        } else {
+            assert.eq(cursorRes.code, code);
+        }
     }
 }
