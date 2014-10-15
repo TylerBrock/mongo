@@ -37,6 +37,8 @@
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/operation_context_impl.h"
+#include "mongo/db/query/plan_executor.h"
+#include "mongo/db/query/get_executor.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/dbtests/dbtests.h"
 
@@ -48,7 +50,7 @@ namespace QueryStageCount {
 
         virtual ~CountStageTest() {}
 
-        virtual void interject(Client::WriteContext&, CountStage&) {}
+        virtual void interject(Client::WriteContext&, CountStage&, size_t) {}
         virtual size_t interjections() { return 0; }
 
         virtual void setup() {
@@ -99,15 +101,15 @@ namespace QueryStageCount {
             _client.update(ns(), q, u);
         }
 
-        void doCount(const BSONObj& filter, ssize_t expected_n) {
-            size_t n_interjections = interjections();
+        void doCount(const BSONObj& filter, ssize_t expected_n=100, size_t skip=0) {
+            size_t interjection = 0;
 
             Client::WriteContext ctx(&_txn, ns());
             Collection* collection = ctx.getCollection();
 
             auto_ptr<WorkingSet> ws(new WorkingSet);
             CollectionScan* cs = createCollectionScan(collection, filter, ws);
-            CountRequest request = createCountRequest(filter);
+            CountRequest request = createCountRequest(filter, skip);
 
             CountStage count_stage(&_txn, collection, request, ws.get(), cs);
 
@@ -121,10 +123,8 @@ namespace QueryStageCount {
                 count_stage.saveState();
 
                 // interject in some way n_interjections times
-                if (n_interjections) {
-                    interject(ctx, count_stage);
-                    n_interjections--;
-                }
+                while (interjection++ < interjections())
+                    interject(ctx, count_stage, interjection);
 
                 // restore from yield
                 count_stage.restoreState(&_txn);
@@ -144,12 +144,12 @@ namespace QueryStageCount {
             return new CollectionScan(&_txn, params, ws.get(), expression);
         }
 
-        CountRequest createCountRequest(const BSONObj& filter) {
+        CountRequest createCountRequest(const BSONObj& filter, size_t skip=0) {
             CountRequest request;
             request.ns = ns();
             request.query = filter;
             request.limit = 0;
-            request.skip = 0;
+            request.skip = skip;
             request.explain = false;
             request.hint = BSONObj();
             return request;
@@ -182,7 +182,7 @@ namespace QueryStageCount {
         }
 
         // This is called 100 times as we scan the collection
-        void interject(Client::WriteContext& ctx, CountStage&) {
+        void interject(Client::WriteContext& ctx, CountStage&, size_t) {
             insert(BSON("x" << 1));
             ctx.commit();
         }
@@ -200,13 +200,15 @@ namespace QueryStageCount {
         }
 
         // At the point which this is called we are in between the first and second record
-        void interject(Client::WriteContext& ctx, CountStage& count_stage) {
-            count_stage.invalidate(_locs[0], INVALIDATION_DELETION);
-            remove(BSON("x" << 0));
-            ctx.commit();
-            count_stage.invalidate(_locs[1], INVALIDATION_DELETION);
-            remove(BSON("x" << 1));
-            ctx.commit();
+        void interject(Client::WriteContext& ctx, CountStage& count_stage, size_t interjection) {
+            if (interjection == 1) {
+                count_stage.invalidate(_locs[0], INVALIDATION_DELETION);
+                remove(BSON("x" << 0));
+                ctx.commit();
+                count_stage.invalidate(_locs[1], INVALIDATION_DELETION);
+                remove(BSON("x" << 1));
+                ctx.commit();
+            }
         }
 
         size_t interjections() { return 1; }
@@ -222,7 +224,7 @@ namespace QueryStageCount {
         }
 
         // At the point which this is called we are in between the first and second record
-        void interject(Client::WriteContext& ctx, CountStage& count_stage) {
+        void interject(Client::WriteContext& ctx, CountStage& count_stage, size_t) {
             update(BSON("x" << 0), BSON("x" << 100));
             count_stage.invalidate(_locs[0], INVALIDATION_MUTATION);
             ctx.commit();
@@ -234,6 +236,50 @@ namespace QueryStageCount {
         size_t interjections() { return 1; }
     };
 
+    class QueryStageCountYieldWithSkip : public CountStageTest {
+    public:
+        void run() {
+            setup();
+        }
+
+        // At the point which this is called we are in between the first and second record
+        void interject(Client::WriteContext&, CountStage&, size_t) {
+        }
+
+        size_t interjections() { return 100; }
+    };
+
+    class QueryPlanExecutorTest : public CountStageTest {
+    public:
+        void run() {
+            setup();
+            CountRequest request;
+            request.query = BSONObj();
+            request.ns = ns();
+            request.hint = BSONObj();
+            request.skip = 0;
+            request.limit = 0;
+
+            AutoGetCollectionForRead ctx(&_txn, ns());
+            Collection* collection = ctx.getCollection();
+
+            PlanExecutor* rawExec;
+            getExecutorCount(&_txn, collection, request, &rawExec);
+            scoped_ptr<PlanExecutor> executor(rawExec);
+
+            executor->setYieldPolicy(PlanExecutor::YIELD_MANUAL);
+
+            Status execPlanStatus = executor->executePlan();
+
+            CountStage* countStage = static_cast<CountStage*>(executor->getRootStage());
+
+            const CountStats* countStats = static_cast<const CountStats*>(
+                countStage->getSpecificStats());
+
+            ASSERT_EQUALS(100, countStats->nCounted);
+        }
+    };
+
     class All : public Suite {
     public:
         All() : Suite("query_stage_count") {}
@@ -243,6 +289,7 @@ namespace QueryStageCount {
             add<QueryStageCountInsertDuringYield>();
             add<QueryStageCountDeleteDuringYield>();
             add<QueryStageCountUpdateDuringYield>();
+            add<QueryPlanExecutorTest>();
         }
     } QueryStageCountAll;
 
