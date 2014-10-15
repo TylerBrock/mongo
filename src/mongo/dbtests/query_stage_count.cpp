@@ -53,7 +53,7 @@ namespace QueryStageCount {
         virtual ~CountStageTest() {}
 
         virtual void interject(Client::WriteContext&, CountStage&, size_t) {}
-        virtual size_t interjections() { return 0; }
+        virtual size_t interjections() { return 100; }
 
         virtual void setup() {
             Client::WriteContext ctx(&_txn, ns());
@@ -188,8 +188,6 @@ namespace QueryStageCount {
             insert(BSON("x" << 1));
             ctx.commit();
         }
-
-        size_t interjections() { return 100; }
     };
 
     class QueryStageCountDeleteDuringYield : public CountStageTest {
@@ -241,8 +239,6 @@ namespace QueryStageCount {
         void run() {
             doCount(BSON("x" << GTE << 2), 96, 2);
         }
-
-        size_t interjections() { return 100; }
     };
 
     class QueryStageCountYieldWithLimit : public CountStageTest {
@@ -250,8 +246,6 @@ namespace QueryStageCount {
         void run() {
             doCount(BSON("x" << GTE << 2), 2, 0, 2);
         }
-
-        size_t interjections() { return 100; }
     };
 
     class QueryPlanExecutorTest : public CountStageTest {
