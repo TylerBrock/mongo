@@ -46,7 +46,9 @@ namespace QueryStageCount {
 
     class CountStageTest {
     public:
-        CountStageTest() : _client(&_txn) {}
+        CountStageTest() : _client(&_txn) {
+            setup();
+        }
 
         virtual ~CountStageTest() {}
 
@@ -101,7 +103,7 @@ namespace QueryStageCount {
             _client.update(ns(), q, u);
         }
 
-        void doCount(const BSONObj& filter, ssize_t expected_n=100, size_t skip=0) {
+        void doCount(const BSONObj& filter, ssize_t expected_n=100, int skip=0, int limit=0) {
             size_t interjection = 0;
 
             Client::WriteContext ctx(&_txn, ns());
@@ -109,7 +111,7 @@ namespace QueryStageCount {
 
             auto_ptr<WorkingSet> ws(new WorkingSet);
             CollectionScan* cs = createCollectionScan(collection, filter, ws);
-            CountRequest request = createCountRequest(filter, skip);
+            CountRequest request = createCountRequest(filter, skip, limit);
 
             CountStage count_stage(&_txn, collection, request, ws.get(), cs);
 
@@ -133,6 +135,7 @@ namespace QueryStageCount {
             const CountStats* stats = static_cast<const CountStats*>(count_stage.getSpecificStats());
 
             ASSERT_EQUALS(stats->nCounted, expected_n);
+            ASSERT_EQUALS(stats->nSkipped, skip);
         }
 
         CollectionScan* createCollectionScan(Collection* collection, const BSONObj& filter, const auto_ptr<WorkingSet>& ws){
@@ -144,11 +147,11 @@ namespace QueryStageCount {
             return new CollectionScan(&_txn, params, ws.get(), expression);
         }
 
-        CountRequest createCountRequest(const BSONObj& filter, size_t skip=0) {
+        CountRequest createCountRequest(const BSONObj& filter, size_t skip, size_t limit) {
             CountRequest request;
             request.ns = ns();
             request.query = filter;
-            request.limit = 0;
+            request.limit = limit;
             request.skip = skip;
             request.explain = false;
             request.hint = BSONObj();
@@ -175,7 +178,6 @@ namespace QueryStageCount {
     class QueryStageCountInsertDuringYield : public CountStageTest {
     public:
         void run() {
-            setup();
             // expected count would be 1 but we insert 100 new records while
             // we are doing work
             doCount(BSON("x" << 1), 101);
@@ -193,7 +195,6 @@ namespace QueryStageCount {
     class QueryStageCountDeleteDuringYield : public CountStageTest {
     public:
         void run() {
-            setup();
             // expected count would be 99 but we delete the second record after doing
             // the first unit of work
             doCount(BSON("x" << GTE << 1), 98);
@@ -217,7 +218,6 @@ namespace QueryStageCount {
     class QueryStageCountUpdateDuringYield : public CountStageTest {
     public:
         void run() {
-            setup();
             // expected count would be 98 but we update the second record after doing
             // the first unit of work
             doCount(BSON("x" << GTE << 2), 100);
@@ -239,11 +239,16 @@ namespace QueryStageCount {
     class QueryStageCountYieldWithSkip : public CountStageTest {
     public:
         void run() {
-            setup();
+            doCount(BSON("x" << GTE << 2), 96, 2);
         }
 
-        // At the point which this is called we are in between the first and second record
-        void interject(Client::WriteContext&, CountStage&, size_t) {
+        size_t interjections() { return 100; }
+    };
+
+    class QueryStageCountYieldWithLimit : public CountStageTest {
+    public:
+        void run() {
+            doCount(BSON("x" << GTE << 2), 2, 0, 2);
         }
 
         size_t interjections() { return 100; }
@@ -252,7 +257,6 @@ namespace QueryStageCount {
     class QueryPlanExecutorTest : public CountStageTest {
     public:
         void run() {
-            setup();
             CountRequest request;
             request.query = BSONObj();
             request.ns = ns();
@@ -289,6 +293,8 @@ namespace QueryStageCount {
             add<QueryStageCountInsertDuringYield>();
             add<QueryStageCountDeleteDuringYield>();
             add<QueryStageCountUpdateDuringYield>();
+            add<QueryStageCountYieldWithSkip>();
+            add<QueryStageCountYieldWithLimit>();
             add<QueryPlanExecutorTest>();
         }
     } QueryStageCountAll;
