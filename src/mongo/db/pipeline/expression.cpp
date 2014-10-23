@@ -1997,6 +1997,30 @@ namespace {
         return "$not";
     }
 
+    /* ------------------------- ExpressionRot13 --------------------------- */
+
+    Value ExpressionRot13::evaluateInternal(Variables* vars) const {
+        Value input(vpOperand[0]->evaluateInternal(vars));
+
+        string s = input.getString();
+
+        for (auto& c : s) {
+            if (c > 'a' && c <= 'z') {
+                c = 'a' + (((c - 'a') + 13) % 26);
+            }
+            if (c > 'A' && c <= 'Z') {
+                c = 'A' + (((c - 'A') + 13) % 26);
+            }
+        }
+
+        return Value(s);
+    }
+
+    REGISTER_EXPRESSION("$rot13", ExpressionRot13::parse);
+    const char *ExpressionRot13::getOpName() const {
+        return "$rot13";
+    }
+
     /* -------------------------- ExpressionOr ----------------------------- */
 
     Value ExpressionOr::evaluateInternal(Variables* vars) const {
