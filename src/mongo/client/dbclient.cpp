@@ -917,10 +917,8 @@ namespace mongo {
                 std::string ns = cursorObj["ns"].String();
                 long long id = cursorObj["id"].Long();
 
-                std::auto_ptr<DBClientCursor> cursor(new DBClientCursor(
-                    dynamic_cast<DBClientBase*>(this), ns, id, 0, QueryOption_SlaveOk));
-
-                while ( cursor->more() ) {
+                auto_ptr<DBClientCursor> cursor = this->getMore(ns, id, 0, QueryOption_SlaveOk);
+                while ( cursor->next() ) {
                     infos.push_back(cursor->next().getOwned());
                 }
 
@@ -1375,11 +1373,9 @@ namespace mongo {
                 std::string ns = cursorObj["ns"].String();
                 long long id = cursorObj["id"].Long();
 
-                std::auto_ptr<DBClientCursor> cursor(new DBClientCursor(
-                    dynamic_cast<DBClientBase*>(this), ns, id, 0, options));
-
-                while ( cursor->more() ) {
-                    specs.push_back(cursor->next().getOwned());
+                auto_ptr<DBClientCursor> cursor = this->getMore(ns, id, 0, QueryOption_SlaveOk);
+                while ( cursor->next() ) {
+                    infos.push_back(cursor->next().getOwned());
                 }
 
                 return specs;
