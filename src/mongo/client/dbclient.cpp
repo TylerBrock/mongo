@@ -918,9 +918,9 @@ namespace mongo {
                 long long id = cursorObj["id"].Long();
 
                 if ( id != 0 ) {
-                    auto_ptr<DBClientCursor> cursor = this->getMore(ns, id, 0, QueryOption_SlaveOk);
-                    while ( cursor->next() ) {
-                        infos.push_back(cursor->next().getOwned());
+                    auto_ptr<DBClientCursor> cursor = getMore(ns, id, 0, QueryOption_SlaveOk);
+                    while ( cursor->more() ) {
+                        infos.push_back(cursor->nextSafe().getOwned());
                     }
                 }
 
@@ -1375,10 +1375,10 @@ namespace mongo {
                 std::string ns = cursorObj["ns"].String();
                 long long id = cursorObj["id"].Long();
 
-                if ( id != 0 )
-                    auto_ptr<DBClientCursor> cursor = this->getMore(ns, id, 0, QueryOption_SlaveOk);
-                    while ( cursor->next() ) {
-                        infos.push_back(cursor->next().getOwned());
+                if ( id != 0 ) {
+                    auto_ptr<DBClientCursor> cursor = getMore(ns, id, 0, QueryOption_SlaveOk);
+                    while ( cursor->more() ) {
+                        specs.push_back(cursor->nextSafe().getOwned());
                     }
                 }
 
