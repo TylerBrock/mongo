@@ -914,11 +914,11 @@ namespace mongo {
                     infos.push_back( e.Obj().getOwned() );
                 }
 
-                std::string ns = cursorObj["ns"].String();
-                long long id = cursorObj["id"].Long();
+                const long long id = cursorObj["id"].Long();
 
                 if ( id != 0 ) {
-                    auto_ptr<DBClientCursor> cursor = getMore(ns, id, 0, QueryOption_SlaveOk);
+                    const std::string ns = cursorObj["ns"].String();
+                    auto_ptr<DBClientCursor> cursor = getMore(ns, id, 0, 0);
                     while ( cursor->more() ) {
                         infos.push_back(cursor->nextSafe().getOwned());
                     }
@@ -1372,11 +1372,11 @@ namespace mongo {
                     specs.push_back( i.next().Obj().getOwned() );
                 }
 
-                std::string ns = cursorObj["ns"].String();
-                long long id = cursorObj["id"].Long();
+                const long long id = cursorObj["id"].Long();
 
                 if ( id != 0 ) {
-                    auto_ptr<DBClientCursor> cursor = getMore(ns, id, 0, QueryOption_SlaveOk);
+                    const std::string ns = cursorObj["ns"].String();
+                    auto_ptr<DBClientCursor> cursor = getMore(ns, id, 0, 0);
                     while ( cursor->more() ) {
                         specs.push_back(cursor->nextSafe().getOwned());
                     }
