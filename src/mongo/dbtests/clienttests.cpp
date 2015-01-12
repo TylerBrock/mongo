@@ -60,6 +60,27 @@ namespace ClientTests {
         const string _ns;
     };
 
+    class MultiBatch : public Base {
+    public:
+        MultiBatch() : Base( "multibatch" ) {}
+        void run() {
+            OperationContextImpl txn;
+            DBDirectClient db(&txn);
+
+            size_t n_collections = 150;
+            for (size_t i = 0; i < n_collections; i++) {
+                std::stringstream ss;
+                ss << ns();
+                ss << i;
+                db.createCollection(ss.str());
+            }
+
+            std::cout << "created collections" <<std::endl;
+
+            list<BSONObj> colls = db.getCollectionInfos("test");
+            ASSERT_EQUALS(n_collections, colls.size());
+        }
+    };
 
     class DropIndex : public Base {
     public:
@@ -223,6 +244,7 @@ namespace ClientTests {
         }
 
         void setupTests() {
+            add<MultiBatch>();
             add<DropIndex>();
             add<BuildIndex>();
             add<CS_10>();

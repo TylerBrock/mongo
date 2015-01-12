@@ -903,7 +903,7 @@ namespace mongo {
             BSONObj res;
             if (runCommand(db,
                            BSON("listCollections" << 1 << "filter" << filter
-                                                       << "cursor" << BSONObj()),
+                                                       << "cursor" << BSON("batchSize" << 10)),
                            res,
                            QueryOption_SlaveOk)) {
                 BSONObj cursorObj = res["cursor"].Obj();
@@ -913,6 +913,7 @@ namespace mongo {
                     BSONElement e = it.next();
                     infos.push_back( e.Obj().getOwned() );
                 }
+                std::cout << "this is hwo many: " << infos.size() << std::endl;
 
                 const long long id = cursorObj["id"].Long();
 
